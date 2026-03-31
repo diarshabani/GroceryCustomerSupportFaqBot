@@ -1,0 +1,47 @@
+{
+  "messages": {
+    "unsupported_question": "I'm sorry, I can only help with questions about our grocery products, prices, stock levels, categories, and suppliers. Please ask about one of those topics!",
+    "security_refusal": "I can only answer questions about our grocery products, prices, stock, and availability. Please ask a grocery-related question.",
+    "context_guidance": "I can help with follow-up questions like that. Please mention the product, category, supplier, or status you want me to check, like 'Which bakery items are in stock?' or 'Who supplies Arabica Coffee?'"
+  },
+  "supported_keywords": {
+    "price": ["price", "cost", "how much", "expensive", "cheap", "cheapest"],
+    "stock": ["stock", "quantity", "how many", "units", "inventory", "left", "remaining", "available"],
+    "status": ["status", "active", "discontinued", "backordered", "available", "in stock", "out of stock"],
+    "category": ["category", "categories", "beverages", "dairy", "bakery", "seafood", "grains", "pulses", "grains & pulses", "fruits", "vegetables", "fruits & vegetables", "oils", "fats", "oils & fats"],
+    "supplier": ["supplier", "supplied", "supply", "supplies", "vendor", "who supplies"],
+    "product": ["tell me about", "product info", "details", "information about", "describe", "what do you know about"],
+    "sales": ["best seller", "best selling", "popular", "sales volume", "top selling", "most sold"],
+    "expiration": ["expire", "expiration", "expiring", "shelf life", "best before", "use by"],
+    "reorder": ["reorder", "restock", "low stock", "need to order", "below reorder"]
+  },
+  "intent_priority": ["reorder", "expiration", "sales", "supplier", "status", "stock", "price", "category", "product"],
+  "query_filler_words": [
+    "a", "about", "all", "an", "any", "are", "available", "can", "carry", "category", "cost", "describe", "details", "do", "does", "for", "have", "hi", "how", "i", "in", "info", "information", "inventory", "is", "item", "items", "left", "me", "much", "of", "on", "our", "price", "product", "products", "quantity", "remaining", "show", "status", "stock", "supplier", "tell", "the", "units", "what", "whats", "which", "who", "you"
+  ],
+  "security_keyword_groups": {
+    "system_info": ["api key", "api keys", "password", "passwords", "token", "tokens", "credential", "credentials", "database", "server info", "server details", "environment variable", "environment variables", "env var", "env vars", "config file", "config files", "source code", "internal url", "internal urls", "system prompt", "developer prompt", "developer message", "secret", "secrets"],
+    "jailbreak": ["ignore all instructions", "ignore your instructions", "ignore previous instructions", "disregard your instructions", "override your role", "override your instructions", "you are now", "act as", "pretend to be", "jailbreak", "roleplay"],
+    "execution": ["run command", "run commands", "run code", "execute code", "execute command", "execute commands", "access file", "access files", "read file", "read files", "open file", "open files", "shell command", "terminal command", "os.system", "subprocess", "curl ", "wget ", "export all product data", "send to ", "post to ", "upload to "],
+    "implementation": ["implementation", "architecture", "model", "tools", "tooling", "prompt"]
+  },
+  "follow_up_phrases": [
+    "which ones",
+    "which one",
+    "which of those",
+    "which of them",
+    "what about those",
+    "what about them",
+    "what about that",
+    "what about it",
+    "how about those",
+    "how about them",
+    "how about that",
+    "how about it",
+    "and which ones",
+    "and which one",
+    "and what about"
+  ],
+  "referential_terms": ["it", "they", "them", "those", "these", "that", "one", "ones"],
+  "code_markers": ["`", "```", "ls ", "cat ", ".env", "ssh", "select ", "insert ", "delete "]
+}
