@@ -22,6 +22,46 @@ def load_and_clean_data(csv_path: str | Path) -> pd.DataFrame:
     return load_inventory_dataframe(csv_path)
 
 
+def _unique_product_names(group: pd.DataFrame) -> list[str]:
+    """Return sorted unique product names for a grouped slice of inventory data."""
+    return sorted(group["Product_Name"].astype(str).unique().tolist())
+
+
+def _format_unique_product_names(group: pd.DataFrame) -> str:
+    """Format unique product names as a retrieval-friendly comma-separated list."""
+    return ", ".join(_unique_product_names(group))
+
+
+def _format_unique_suppliers(group: pd.DataFrame) -> str:
+    """Format unique supplier names for grouped inventory slices."""
+    return ", ".join(sorted(group["Supplier_Name"].astype(str).unique().tolist()))
+
+
+def _format_categories(group: pd.DataFrame) -> str:
+    """Format unique category names for grouped inventory slices."""
+    return ", ".join(sorted(group["Category"].astype(str).unique().tolist()))
+
+
+def _format_status_record_breakdown(group: pd.DataFrame) -> str:
+    """Summarize row counts and unique-name counts for each status in a category."""
+    parts: list[str] = []
+    for status, status_group in group.groupby("Status", sort=True):
+        parts.append(
+            f"{status}: {len(status_group)} inventory records across "
+            f"{status_group['Product_Name'].nunique()} unique product names"
+        )
+    return "; ".join(parts)
+
+
+def _format_price_text(group: pd.DataFrame) -> str:
+    """Describe the exact price or min/max price range for a group."""
+    min_price = float(group["Unit_Price"].min())
+    max_price = float(group["Unit_Price"].max())
+    if min_price == max_price:
+        return f"${min_price:.2f}"
+    return f"${min_price:.2f} to ${max_price:.2f}"
+
+
 def build_documents(cleaned_df: pd.DataFrame, source_path: str | Path) -> list[Document]:
     """Turn cleaned grocery records into retrieval-friendly documents."""
     source_path = str(Path(source_path).resolve())
@@ -71,33 +111,21 @@ def build_documents(cleaned_df: pd.DataFrame, source_path: str | Path) -> list[D
         documents.append(Document(page_content=record_text, metadata=metadata))
 
     for category, group in cleaned_df.groupby("Category", sort=True):
-        status_breakdown = ", ".join(
-            f"{status}: {count}" for status, count in group["Status"].value_counts().items()
-        )
-        sample_products = ", ".join(group["Product_Name"].sort_values().head(5))
-        urgent_items = group.sort_values(
-            by=["Needs_Reorder", "Stock_Gap_To_Reorder_Level", "Product_Name"],
-            ascending=[False, True, True],
-        ).head(3)
-        urgent_text = "; ".join(
-            (
-                f"{item.Product_Name} "
-                f"(stock {int(item.Stock_Quantity)}, reorder level {int(item.Reorder_Level)})"
-            )
-            for item in urgent_items.itertuples(index=False)
-        )
+        unique_names = _unique_product_names(group)
+        unique_names_text = ", ".join(unique_names)
+        status_breakdown = _format_status_record_breakdown(group)
 
         summary_text = (
             f"Category summary for {category}. "
-            f"There are {len(group)} products in this category. "
+            f"There are {len(group)} inventory records in this category across "
+            f"{len(unique_names)} unique product names. "
+            f"Unique product names in {category}: {unique_names_text}. "
             f"Average unit price: ${group['Unit_Price'].mean():.2f}. "
             f"Total stock on hand: {int(group['Stock_Quantity'].sum())} units. "
             f"Average stock quantity: {group['Stock_Quantity'].mean():.1f} units. "
             f"Total sales volume: {int(group['Sales_Volume'].sum())} units. "
-            f"Products needing reorder: {int(group['Needs_Reorder'].sum())}. "
-            f"Status breakdown: {status_breakdown}. "
-            f"Sample products: {sample_products}. "
-            f"Most urgent reorder candidates: {urgent_text}."
+            f"Inventory records needing reorder: {int(group['Needs_Reorder'].sum())}. "
+            f"Status breakdown in {category}: {status_breakdown}."
         )
 
         documents.append(
@@ -107,7 +135,83 @@ def build_documents(cleaned_df: pd.DataFrame, source_path: str | Path) -> list[D
                     "chunk_type": "category_summary",
                     "source_csv": source_path,
                     "category": category,
-                    "product_count": int(len(group)),
+                    "inventory_record_count": int(len(group)),
+                    "unique_product_name_count": int(len(unique_names)),
+                },
+            )
+        )
+
+        for status, status_group in group.groupby("Status", sort=True):
+            unique_status_names = _format_unique_product_names(status_group)
+            documents.append(
+                Document(
+                    page_content=(
+                        f"Category status summary for {category} with status {status}. "
+                        f"There are {len(status_group)} {status.lower()} inventory records in {category} "
+                        f"across {status_group['Product_Name'].nunique()} unique product names. "
+                        f"Unique product names in {category} with status {status}: {unique_status_names}. "
+                        f"Total stock on hand for these records: {int(status_group['Stock_Quantity'].sum())} units."
+                    ),
+                    metadata={
+                        "chunk_type": "category_status_summary",
+                        "source_csv": source_path,
+                        "category": category,
+                        "status": status,
+                        "inventory_record_count": int(len(status_group)),
+                        "unique_product_name_count": int(status_group["Product_Name"].nunique()),
+                    },
+                )
+            )
+
+    for product_name, group in cleaned_df.groupby("Product_Name", sort=True):
+        categories_text = _format_categories(group)
+        supplier_names = _format_unique_suppliers(group)
+        product_ids = ", ".join(sorted(group["Product_ID"].astype(str).tolist()))
+        summary_text = (
+            f"Product summary for {product_name}. "
+            f"{product_name} appears in {len(group)} inventory records across "
+            f"{group['Supplier_Name'].nunique()} unique suppliers. "
+            f"Categories: {categories_text}. "
+            f"Supplier names: {supplier_names}. "
+            f"Status breakdown: {_format_status_record_breakdown(group)}. "
+            f"Total stock on hand: {int(group['Stock_Quantity'].sum())} units. "
+            f"Unit price range: {_format_price_text(group)}. "
+            f"Product IDs: {product_ids}."
+        )
+
+        documents.append(
+            Document(
+                page_content=summary_text,
+                metadata={
+                    "chunk_type": "product_summary",
+                    "source_csv": source_path,
+                    "product_name": product_name,
+                    "inventory_record_count": int(len(group)),
+                    "unique_supplier_count": int(group["Supplier_Name"].nunique()),
+                },
+            )
+        )
+
+    for supplier_name, group in cleaned_df.groupby("Supplier_Name", sort=True):
+        summary_text = (
+            f"Supplier summary for {supplier_name}. "
+            f"{supplier_name} supplies {group['Product_Name'].nunique()} unique product names "
+            f"across {len(group)} inventory records. "
+            f"Product names supplied by {supplier_name}: {_format_unique_product_names(group)}. "
+            f"Categories covered by {supplier_name}: {_format_categories(group)}. "
+            f"Status breakdown for {supplier_name}: {_format_status_record_breakdown(group)}. "
+            f"Total stock on hand from {supplier_name}: {int(group['Stock_Quantity'].sum())} units."
+        )
+
+        documents.append(
+            Document(
+                page_content=summary_text,
+                metadata={
+                    "chunk_type": "supplier_summary",
+                    "source_csv": source_path,
+                    "supplier_name": supplier_name,
+                    "inventory_record_count": int(len(group)),
+                    "unique_product_name_count": int(group["Product_Name"].nunique()),
                 },
             )
         )
@@ -116,16 +220,17 @@ def build_documents(cleaned_df: pd.DataFrame, source_path: str | Path) -> list[D
         category_breakdown = ", ".join(
             f"{category}: {count}" for category, count in group["Category"].value_counts().items()
         )
-        sample_products = ", ".join(group["Product_Name"].sort_values().head(8))
+        unique_names_text = _format_unique_product_names(group)
 
         summary_text = (
             f"Status summary for {status}. "
-            f"There are {len(group)} products with this status. "
+            f"There are {len(group)} inventory records with this status across "
+            f"{group['Product_Name'].nunique()} unique product names. "
+            f"Unique product names with status {status}: {unique_names_text}. "
             f"Categories represented: {category_breakdown}. "
             f"Average unit price: ${group['Unit_Price'].mean():.2f}. "
             f"Total stock on hand: {int(group['Stock_Quantity'].sum())} units. "
-            f"Products needing reorder: {int(group['Needs_Reorder'].sum())}. "
-            f"Sample products: {sample_products}."
+            f"Inventory records needing reorder: {int(group['Needs_Reorder'].sum())}."
         )
 
         documents.append(
@@ -135,10 +240,35 @@ def build_documents(cleaned_df: pd.DataFrame, source_path: str | Path) -> list[D
                     "chunk_type": "status_summary",
                     "source_csv": source_path,
                     "status": status,
-                    "product_count": int(len(group)),
+                    "inventory_record_count": int(len(group)),
+                    "unique_product_name_count": int(group["Product_Name"].nunique()),
                 },
             )
         )
+
+    documents.append(
+        Document(
+            page_content=(
+                "Overall inventory summary. "
+                f"There are {len(cleaned_df)} inventory records across "
+                f"{cleaned_df['Product_Name'].nunique()} unique product names and "
+                f"{cleaned_df['Supplier_Name'].nunique()} unique suppliers. "
+                f"Categories represented: {_format_categories(cleaned_df)}. "
+                f"Backordered inventory records: {int((cleaned_df['Status'] == 'Backordered').sum())} "
+                f"across {cleaned_df.loc[cleaned_df['Status'] == 'Backordered', 'Product_Name'].nunique()} "
+                "unique product names. "
+                f"Active inventory records: {int((cleaned_df['Status'] == 'Active').sum())}. "
+                f"Discontinued inventory records: {int((cleaned_df['Status'] == 'Discontinued').sum())}."
+            ),
+            metadata={
+                "chunk_type": "inventory_overview",
+                "source_csv": source_path,
+                "inventory_record_count": int(len(cleaned_df)),
+                "unique_product_name_count": int(cleaned_df["Product_Name"].nunique()),
+                "unique_supplier_count": int(cleaned_df["Supplier_Name"].nunique()),
+            },
+        )
+    )
 
     return documents
 

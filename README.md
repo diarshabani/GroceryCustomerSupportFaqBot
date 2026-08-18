@@ -1,15 +1,20 @@
-# Grocery Store FAQ Chatbot
+# Grocery Store FAQ Chatbot assitant
 
-Grocery Inventory FAQ chatbot that leverages a CSV dat set, python flask api and Open AI apis to help assist customers
+Based off of Grocery Store CSV data, we created Grocery Inventory FAQ chatbot that is ran through python flask api and OpenAI APIs to help assist customers and staff members of the grocery store.
+
 
 ## Prerequisites
 
 - Python 3.8+
-- OpenAI API key available as the `OPENAI_API_KEY` environment variable
+- an OpenAI API key exported as the `OPENAI_API_KEY` environment variable:
+
+  ```bash
+  export OPENAI_API_KEY="your-key-here"
+  ```
 
 ## Installation
 
-Install the required packages:
+Install the required python packages:
 
 ```bash
 pip install langchain langchain-openai langchain-community faiss-cpu flask pandas openai
@@ -17,25 +22,25 @@ pip install langchain langchain-openai langchain-community faiss-cpu flask panda
 
 ## Usage
 
-1. Build or refresh the FAISS index:
+1. Build or refresh the FAISS index based off the grocery store inventory data:
 
    ```bash
    python3 data_pipeline.py
    ```
 
-2. Start the Flask application:
+2. Start the Flask application to serve the web ui and backend:
 
    ```bash
    python3 app.py
    ```
 
-3. Open the web interface in your browser:
+3. Open the web app on your browser by navigating to :
 
    ```text
    http://localhost:5000
    ```
 
-4. Run the performance benchmark script:
+4. additionall you can run a performance benchmark script:
 
    ```bash
    python3 test_performance.py
@@ -43,19 +48,23 @@ pip install langchain langchain-openai langchain-community faiss-cpu flask panda
 
 ## Project Structure
 
-Project root: `/Users/diorock/Projects/CS311_AI_StudyDotCom/Assignment2`
+All paths are relative to the project root (the `Assignment2` folder):
 
 ```text
-/Users/diorock/Projects/CS311_AI_StudyDotCom/Assignment2
+Assignment2/
 ├── .venv/                        # Optional local virtual environment
 ├── Grocery_Inventory_and_Sales_Dataset.csv
 ├── README.md
 ├── app.py
 ├── chatbot.py
+├── chatbot_assets.py
+├── chatbot_config.json
 ├── data_pipeline.py
 ├── faiss_index/
 │   ├── index.faiss
 │   └── index.pkl
+├── faq_assistant_prompt.txt
+├── inventory_utils.py
 ├── templates/
 │   └── index.html
 └── test_performance.py
@@ -63,11 +72,4 @@ Project root: `/Users/diorock/Projects/CS311_AI_StudyDotCom/Assignment2`
 
 ## Dataset Source
 
-The chatbot usees a local dataset file imported from kaggle.com, Grocery_Inventory_and_Sales_Dataset.csv. The dataset shows a snapshot of what an inventory management system may look like in a real world setting. Kaggle source : https://www.kaggle.com/datasets/salahuddinahmedshuvo/grocery-inventory-and-sales-dataset
-
-## Runtime Notes
-
-- data_pipeline.py, app.py and test_performance.py require a valid OPENAI_API_KEY on your local environment configured.
-- We leverage FAISS index for the chatbot to quickly query / acquire inventory information to then convey to the user.
-- If FAISS index is missing or the OpenAI api request is not able to be completed, chatbot.py will fallback to answering common product, category price and status questions directly from the CSV leveraging a keyword fuzzy match to try to address common user queries backed by data that exists in the CSV
-- the webapp loads at localhost:5000 once running
+The chatbot uses a local csv imported from kaggle.com called Grocery_Inventory_and_Sales_Dataset.csv. This csv shows a large amount of data relating to the inventory of a Grocery store in a real world setting. Kaggle source : https://www.kaggle.com/datasets/salahuddinahmedshuvo/grocery-inventory-and-sales-dataset

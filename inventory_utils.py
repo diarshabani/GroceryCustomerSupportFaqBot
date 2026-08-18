@@ -10,14 +10,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATASET_FILENAME = "Grocery_Inventory_and_Sales_Dataset.csv"
-FALLBACK_DATASET_PATH = Path(
-    "/Users/diorock/Library/Application Support/Claude/local-agent-mode-sessions/"
-    "9cec455c-971f-498a-a411-ae74e154b5dd/"
-    "0d07e82e-39a3-4e36-ae3d-ee4cb2dfa7ee/"
-    "local_edeac6c5-9d30-471f-9e08-0bfda5693150/outputs/assignment2/"
-    "Grocery_Inventory_and_Sales_Dataset.csv"
-)
-DISPLAY_COLUMNS = [
+RECORD_DISPLAY_COLUMNS = [
     "Product_Name",
     "Category",
     "Unit_Price",
@@ -26,6 +19,17 @@ DISPLAY_COLUMNS = [
     "Supplier_Name",
     "Sales_Volume",
 ]
+PRODUCT_DISPLAY_COLUMNS = [
+    "Product_Name",
+    "Categories",
+    "Supplier_Count",
+    "Suppliers",
+    "Price_Range",
+    "Total_Stock",
+    "Status_Summary",
+    "Inventory_Record_Count",
+]
+DISPLAY_COLUMNS = PRODUCT_DISPLAY_COLUMNS
 STRING_COLUMNS = [
     "Product_ID",
     "Product_Name",
@@ -47,7 +51,7 @@ REQUIRED_COLUMNS = set(STRING_COLUMNS + INTEGER_COLUMNS + DATE_COLUMNS + ["Unit_
 
 
 def resolve_dataset_path(csv_path: str | Path | None = None) -> Path:
-    """Prefer the project-local CSV and fall back to the discovered source path."""
+    """Resolve the grocery dataset from an explicit path or common local locations."""
     if csv_path is not None:
         candidate = Path(csv_path).expanduser()
         if candidate.exists():
@@ -57,7 +61,6 @@ def resolve_dataset_path(csv_path: str | Path | None = None) -> Path:
     candidates = [
         PROJECT_ROOT / DATASET_FILENAME,
         Path.cwd() / DATASET_FILENAME,
-        FALLBACK_DATASET_PATH,
     ]
 
     for candidate in candidates:
@@ -132,6 +135,46 @@ def load_inventory_dataframe(csv_path: str | Path | None = None) -> pd.DataFrame
     )
 
 
+def _format_price_range(prices: pd.Series) -> str:
+    """Render a single price or a min/max price range."""
+    min_price = float(prices.min())
+    max_price = float(prices.max())
+    if min_price == max_price:
+        return f"${min_price:.2f}"
+    return f"${min_price:.2f} - ${max_price:.2f}"
+
+
+def _format_status_summary(statuses: pd.Series) -> str:
+    """Render per-status record counts in a compact, readable string."""
+    return ", ".join(
+        f"{status}: {count}" for status, count in statuses.value_counts().items()
+    )
+
+
+def aggregate_product_inventory(cleaned_df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse repeated inventory rows into one product-level record per product name."""
+    product_rows: list[dict[str, Any]] = []
+
+    for product_name, group in cleaned_df.groupby("Product_Name", sort=True):
+        categories = sorted(group["Category"].astype(str).unique().tolist())
+        suppliers = sorted(group["Supplier_Name"].astype(str).unique().tolist())
+
+        product_rows.append(
+            {
+                "Product_Name": product_name,
+                "Categories": ", ".join(categories),
+                "Supplier_Count": len(suppliers),
+                "Suppliers": ", ".join(suppliers),
+                "Price_Range": _format_price_range(group["Unit_Price"]),
+                "Total_Stock": int(group["Stock_Quantity"].sum()),
+                "Status_Summary": _format_status_summary(group["Status"]),
+                "Inventory_Record_Count": int(len(group)),
+            }
+        )
+
+    return pd.DataFrame(product_rows).sort_values("Product_Name").reset_index(drop=True)
+
+
 def dataframe_to_display_records(
     cleaned_df: pd.DataFrame,
     columns: list[str] | None = None,
@@ -139,10 +182,23 @@ def dataframe_to_display_records(
     """Convert the cleaned dataframe into template-friendly row dictionaries."""
     selected_columns = columns or DISPLAY_COLUMNS
     display_df = cleaned_df.loc[:, selected_columns].copy()
-    display_df["Unit_Price"] = display_df["Unit_Price"].map(lambda value: f"${value:.2f}")
+    if "Unit_Price" in display_df.columns:
+        display_df["Unit_Price"] = display_df["Unit_Price"].map(lambda value: f"${value:.2f}")
     return display_df.to_dict(orient="records")
 
 
 def load_inventory_records(csv_path: str | Path | None = None) -> list[dict[str, Any]]:
-    """Load the inventory and return template-ready records."""
-    return dataframe_to_display_records(load_inventory_dataframe(csv_path))
+    """Load the raw inventory rows and return template-ready records."""
+    return dataframe_to_display_records(
+        load_inventory_dataframe(csv_path),
+        columns=RECORD_DISPLAY_COLUMNS,
+    )
+
+
+def load_product_inventory_records(csv_path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Load the inventory and return one aggregated row per product name."""
+    product_df = aggregate_product_inventory(load_inventory_dataframe(csv_path))
+    return dataframe_to_display_records(
+        product_df,
+        columns=PRODUCT_DISPLAY_COLUMNS,
+    )

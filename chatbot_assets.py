@@ -13,12 +13,7 @@ CONFIG_PATH = PROJECT_ROOT / "chatbot_config.json"
 PROMPT_PATH = PROJECT_ROOT / "faq_assistant_prompt.txt"
 REQUIRED_CONFIG_KEYS = {
     "messages",
-    "supported_keywords",
-    "intent_priority",
-    "query_filler_words",
     "security_keyword_groups",
-    "follow_up_phrases",
-    "referential_terms",
     "code_markers",
 }
 

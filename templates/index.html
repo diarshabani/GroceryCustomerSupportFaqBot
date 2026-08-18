@@ -121,6 +121,41 @@
       position: relative;
     }
 
+    .panel-controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .view-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f7fbf8;
+    }
+
+    .view-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .view-toggle button.active {
+      background: var(--leaf);
+      color: white;
+      box-shadow: 0 10px 18px rgba(33, 92, 52, 0.18);
+    }
+
     .search-wrap input {
       width: 100%;
       padding: 14px 16px;
@@ -394,14 +429,14 @@
         <h1>Fresh Answers For The Grocery Floor</h1>
         <p>Browse the live inventory, filter products instantly, and ask the embedded FAQ assistant about prices, availability, and stock status using the same dataset shown below.</p>
         <div class="hero-badges">
-          <span class="badge">{{ inventory_data|length }} inventory records</span>
-          <span class="badge">Live search table</span>
+          <span class="badge">{{ product_inventory_data|length }} unique product names</span>
+          <span class="badge">{{ record_inventory_data|length }} inventory records</span>
           <span class="badge">RAG-powered FAQ widget</span>
         </div>
       </div>
       <aside class="hero-note">
         <h2>Inventory Snapshot</h2>
-        <p>The table supports quick filtering across product names, categories, suppliers, prices, and status labels. Open the floating chat button when you want a natural-language answer instead of scanning rows manually.</p>
+        <p>The table opens in a consolidated product view so repeated supplier rows are grouped into one product line. Switch to raw record view whenever you want to inspect product IDs, suppliers, and individual inventory records.</p>
       </aside>
     </section>
 
@@ -409,18 +444,24 @@
       <div class="panel-header">
         <div>
           <h2>Store Inventory</h2>
-          <p>Search across the dataset in real time. The header stays pinned while you scroll.</p>
+          <p id="viewDescription">Default view groups repeated rows into one product line. Switch to record view for supplier-level detail.</p>
         </div>
-        <label class="search-wrap">
-          <input id="tableSearch" type="search" placeholder="Search products, categories, suppliers, price, or status">
-        </label>
+        <div class="panel-controls">
+          <label class="search-wrap">
+            <input id="tableSearch" type="search" placeholder="Search products, categories, suppliers, price, or status">
+          </label>
+          <div class="view-toggle" role="group" aria-label="Inventory view toggle">
+            <button class="active" id="productViewButton" type="button" data-view="products">Product View</button>
+            <button id="recordViewButton" type="button" data-view="records">Record View</button>
+          </div>
+        </div>
       </div>
 
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>
-              {% for column in display_columns %}
+            <tr id="inventoryTableHead">
+              {% for column in product_display_columns %}
               <th>{{ column }}</th>
               {% endfor %}
             </tr>
@@ -447,11 +488,17 @@
   </section>
 
   <script>
-    const inventoryData = {{ inventory_data|tojson }};
-    const displayColumns = {{ display_columns|tojson }};
+    const productInventoryData = {{ product_inventory_data|tojson }};
+    const productDisplayColumns = {{ product_display_columns|tojson }};
+    const recordInventoryData = {{ record_inventory_data|tojson }};
+    const recordDisplayColumns = {{ record_display_columns|tojson }};
     const tableBody = document.getElementById("inventoryTableBody");
+    const tableHead = document.getElementById("inventoryTableHead");
     const emptyState = document.getElementById("emptyState");
     const searchInput = document.getElementById("tableSearch");
+    const viewDescription = document.getElementById("viewDescription");
+    const productViewButton = document.getElementById("productViewButton");
+    const recordViewButton = document.getElementById("recordViewButton");
     const chatToggle = document.getElementById("chatToggle");
     const chatPanel = document.getElementById("chatPanel");
     const chatMessages = document.getElementById("chatMessages");
@@ -460,14 +507,45 @@
     const sendButton = document.getElementById("sendButton");
     const MAX_HISTORY_TURNS = 10;
     const chatHistory = [];
+    const inventoryViews = {
+      products: {
+        rows: productInventoryData,
+        columns: productDisplayColumns,
+        emptyMessage: "No grouped product rows match your search.",
+        description: "Default view groups repeated rows into one product line. Switch to record view for supplier-level detail."
+      },
+      records: {
+        rows: recordInventoryData,
+        columns: recordDisplayColumns,
+        emptyMessage: "No inventory records match your search.",
+        description: "Record view shows the raw inventory rows, including repeated product names across suppliers and product IDs."
+      }
+    };
+    let activeView = "products";
+
+    function getActiveView() {
+      return inventoryViews[activeView];
+    }
+
+    function renderTableHead() {
+      tableHead.innerHTML = "";
+
+      getActiveView().columns.forEach((column) => {
+        const th = document.createElement("th");
+        th.textContent = column;
+        tableHead.appendChild(th);
+      });
+    }
 
     function renderTable(rows) {
+      renderTableHead();
       tableBody.innerHTML = "";
+      const activeColumns = getActiveView().columns;
 
       rows.forEach((row) => {
         const tr = document.createElement("tr");
 
-        displayColumns.forEach((column) => {
+        activeColumns.forEach((column) => {
           const td = document.createElement("td");
           td.textContent = row[column] ?? "";
           tr.appendChild(td);
@@ -476,6 +554,7 @@
         tableBody.appendChild(tr);
       });
 
+      emptyState.textContent = getActiveView().emptyMessage;
       emptyState.style.display = rows.length ? "none" : "block";
     }
 
@@ -484,11 +563,26 @@
         return true;
       }
 
-      const haystack = displayColumns
+      const haystack = getActiveView().columns
         .map((column) => String(row[column] ?? "").toLowerCase())
         .join(" ");
 
       return haystack.includes(query);
+    }
+
+    function getFilteredRows(query) {
+      const normalizedQuery = query.trim().toLowerCase();
+      return getActiveView().rows.filter((row) => matchesSearch(row, normalizedQuery));
+    }
+
+    function setActiveView(viewKey) {
+      activeView = viewKey;
+      productViewButton.classList.toggle("active", viewKey === "products");
+      recordViewButton.classList.toggle("active", viewKey === "records");
+      productViewButton.setAttribute("aria-pressed", String(viewKey === "products"));
+      recordViewButton.setAttribute("aria-pressed", String(viewKey === "records"));
+      viewDescription.textContent = getActiveView().description;
+      renderTable(getFilteredRows(searchInput.value));
     }
 
     function addMessage(text, type) {
@@ -563,9 +657,11 @@
     }
 
     searchInput.addEventListener("input", (event) => {
-      const query = event.target.value.trim().toLowerCase();
-      renderTable(inventoryData.filter((row) => matchesSearch(row, query)));
+      renderTable(getFilteredRows(event.target.value));
     });
+
+    productViewButton.addEventListener("click", () => setActiveView("products"));
+    recordViewButton.addEventListener("click", () => setActiveView("records"));
 
     chatToggle.addEventListener("click", () => {
       chatPanel.classList.toggle("open");
@@ -586,7 +682,7 @@
       await sendQuestion(question);
     });
 
-    renderTable(inventoryData);
+    setActiveView("products");
     addMessage("Hi! Ask me about grocery products, prices, inventory status, or availability.", "bot");
   </script>
 </body>
